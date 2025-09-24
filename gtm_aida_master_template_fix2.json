@@ -259,11 +259,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  function toNumber(value, fallback) {\n    var num = parseFloat(value);\n    return isFinite(num) ? num : fallback;\n  }\n  var attentionSeconds = Math.max(0, Math.round(toNumber('{{AIDA - Attention Delay (s)}}', 5)));\n  var intentionSeconds = Math.max(attentionSeconds, Math.round(toNumber('{{AIDA - Intention Delay (s)}}', 8)));\n  var desireSeconds = Math.max(intentionSeconds, Math.round(toNumber('{{AIDA - Desire Min Seconds (s)}}', intentionSeconds)));\n  var desireClicks = Math.max(0, Math.round(toNumber('{{AIDA - Desire Click Threshold}}', 3)));\n  if (window.__AIDA_SESSION_INIT__) {\n    return;\n  }\n  window.__AIDA_SESSION_INIT__ = true;\n  var dataLayer = window.dataLayer = window.dataLayer || [];\n  function safePush(obj) {\n    try {\n      dataLayer.push(obj);\n    } catch (e) {}\n  }\n  function nowTs() {\n    return Date.now();\n  }\n  function uuid4() {\n    var d = Date.now();\n    var d2 = (typeof performance !== 'undefined' && performance.now && (performance.now() * 1000)) || 0;\n    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n      var r = Math.random() * 16;\n      if (d > 0) {\n        r = (d + r) % 16 | 0;\n        d = Math.floor(d / 16);\n      } else {\n        r = (d2 + r) % 16 | 0;\n        d2 = Math.floor(d2 / 16);\n      }\n      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n    });\n  }\n  function secondsSince(ts) {\n    return Math.max(0, Math.round((nowTs() - ts) / 1000));\n  }\n  var stageOrder = { 'None': 0, 'Att': 1, 'Int': 2, 'De': 3 };\n  var stageEvents = { 'Att': 'aida_attention_event', 'Int': 'aida_intention_event', 'De': 'aida_desire_event' };\n  var storage = window.sessionStorage;\n  try {\n    if (!storage.getItem('aida_session_start_ts')) {\n      storage.setItem('aida_session_start_ts', String(nowTs()));\n    }\n    if (!storage.getItem('gtm_session_click_count')) {\n      storage.setItem('gtm_session_click_count', '0');\n    }\n    if (!storage.getItem('gtm_aida_stage_reached')) {\n      storage.setItem('gtm_aida_stage_reached', 'None');\n    }\n  } catch (err) {\n    storage = {\n      _data: {},\n      getItem: function(key) { return this._data[key]; },\n      setItem: function(key, value) { this._data[key] = String(value); },\n      removeItem: function(key) { delete this._data[key]; }\n    };\n    storage.setItem('aida_session_start_ts', String(nowTs()));\n    storage.setItem('gtm_session_click_count', '0');\n    storage.setItem('gtm_aida_stage_reached', 'None');\n  }\n  var sessionStart = parseInt(storage.getItem('aida_session_start_ts') || String(nowTs()), 10);\n  if (!isFinite(sessionStart)) {\n    sessionStart = nowTs();\n    try {\n      storage.setItem('aida_session_start_ts', String(sessionStart));\n    } catch (e) {}\n  }\n  function getStage() {\n    var stored = storage.getItem('gtm_aida_stage_reached');\n    return stageOrder.hasOwnProperty(stored) ? stored : 'None';\n  }\n  function setStage(stage) {\n    try {\n      storage.setItem('gtm_aida_stage_reached', stage);\n    } catch (e) {}\n  }\n  function getClicks() {\n    var raw = parseInt(storage.getItem('gtm_session_click_count') || '0', 10);\n    return isFinite(raw) && raw >= 0 ? raw : 0;\n  }\n  function setClicks(value) {\n    try {\n      storage.setItem('gtm_session_click_count', String(Math.max(0, value)));\n    } catch (e) {}\n  }\n  var eventIdBase = uuid4();\n  function dispatchStage(stageKey) {\n    var payload = {\n      event_id: eventIdBase + '-' + stageKey,\n      aida_stage: stageKey,\n      session_clicks: getClicks(),\n      dwell_seconds: secondsSince(sessionStart)\n    };\n    safePush({\n      event: stageEvents[stageKey],\n      event_id: payload.event_id,\n      aida_stage: payload.aida_stage,\n      session_clicks: payload.session_clicks,\n      dwell_seconds: payload.dwell_seconds\n    });\n  }\n  function maybeFire(stageKey) {\n    if (!stageEvents[stageKey]) {\n      return;\n    }\n    var currentStage = getStage();\n    if (stageOrder[currentStage] >= stageOrder[stageKey]) {\n      return;\n    }\n    setStage(stageKey);\n    dispatchStage(stageKey);\n  }\n  function checkDesire() {\n    if (stageOrder[getStage()] < stageOrder['Int']) {\n      return;\n    }\n    if (secondsSince(sessionStart) < desireSeconds) {\n      return;\n    }\n    if (getClicks() < desireClicks) {\n      return;\n    }\n    maybeFire('De');\n  }\n  document.addEventListener('click', function() {\n    var total = getClicks() + 1;\n    setClicks(total);\n    safePush({ event: 'aida_click_increment', session_clicks: total });\n    checkDesire();\n  }, true);\n  document.addEventListener('visibilitychange', function() {\n    if (!document.hidden) {\n      checkDesire();\n    }\n  });\n  setTimeout(function() {\n    maybeFire('Att');\n  }, attentionSeconds * 1000);\n  setTimeout(function() {\n    maybeFire('Int');\n    checkDesire();\n  }, intentionSeconds * 1000);\n  setTimeout(function() {\n    checkDesire();\n  }, desireSeconds * 1000);\n  safePush({\n    event: 'aida_bootstrap',\n    aida_stage: getStage(),\n    session_clicks: getClicks(),\n    dwell_seconds: secondsSince(sessionStart),\n    aida_attention_delay_s: attentionSeconds,\n    aida_intention_delay_s: intentionSeconds,\n    aida_desire_delay_s: desireSeconds,\n    aida_desire_click_threshold: desireClicks\n  });\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  function toNumber(value, fallback) {\n    var num = parseFloat(value);\n    return isFinite(num) ? num : fallback;\n  }\n  var attentionSeconds = Math.max(0, Math.round(toNumber('{{AIDA - Attention Delay (s)}}', 5)));\n  var intentionSeconds = Math.max(attentionSeconds, Math.round(toNumber('{{AIDA - Intention Delay (s)}}', 8)));\n  var desireSeconds = Math.max(intentionSeconds, Math.round(toNumber('{{AIDA - Desire Min Seconds (s)}}', intentionSeconds)));\n  var desireClicks = Math.max(0, Math.round(toNumber('{{AIDA - Desire Click Threshold}}', 3)));\n  if (window.__AIDA_SESSION_INIT__) {\n    return;\n  }\n  window.__AIDA_SESSION_INIT__ = true;\n  var dataLayer = window.dataLayer = window.dataLayer || [];\n  function safePush(obj) {\n    try {\n      dataLayer.push(obj);\n    } catch (e) {}\n  }\n  function nowTs() {\n    return Date.now();\n  }\n  function uuid4() {\n    var d = Date.now();\n    var d2 = (typeof performance !== 'undefined' && performance.now && (performance.now() * 1000)) || 0;\n    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n      var r = Math.random() * 16;\n      if (d > 0) {\n        r = (d + r) % 16 | 0;\n        d = Math.floor(d / 16);\n      } else {\n        r = (d2 + r) % 16 | 0;\n        d2 = Math.floor(d2 / 16);\n      }\n      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n    });\n  }\n  function secondsSince(ts) {\n    return Math.max(0, Math.round((nowTs() - ts) / 1000));\n  }\n  var stageOrder = { 'None': 0, 'Att': 1, 'Int': 2, 'De': 3 };\n  var stageEvents = { 'Att': 'aida_attention_event', 'Int': 'aida_intention_event', 'De': 'aida_desire_event' };\n  var storage = window.sessionStorage;\n  try {\n    if (!storage.getItem('aida_session_start_ts')) {\n      storage.setItem('aida_session_start_ts', String(nowTs()));\n    }\n    if (!storage.getItem('gtm_session_click_count')) {\n      storage.setItem('gtm_session_click_count', '0');\n    }\n    if (!storage.getItem('gtm_aida_stage_reached')) {\n      storage.setItem('gtm_aida_stage_reached', 'None');\n    }\n  } catch (err) {\n    storage = {\n      _data: {},\n      getItem: function(key) { return this._data[key]; },\n      setItem: function(key, value) { this._data[key] = String(value); },\n      removeItem: function(key) { delete this._data[key]; }\n    };\n    storage.setItem('aida_session_start_ts', String(nowTs()));\n    storage.setItem('gtm_session_click_count', '0');\n    storage.setItem('gtm_aida_stage_reached', 'None');\n  }\n  var sessionStart = parseInt(storage.getItem('aida_session_start_ts') || String(nowTs()), 10);\n  if (!isFinite(sessionStart)) {\n    sessionStart = nowTs();\n    try {\n      storage.setItem('aida_session_start_ts', String(sessionStart));\n    } catch (e) {}\n  }\n  function getStage() {\n    var stored = storage.getItem('gtm_aida_stage_reached');\n    return stageOrder.hasOwnProperty(stored) ? stored : 'None';\n  }\n  function setStage(stage) {\n    try {\n      storage.setItem('gtm_aida_stage_reached', stage);\n    } catch (e) {}\n  }\n  function getClicks() {\n    var raw = parseInt(storage.getItem('gtm_session_click_count') || '0', 10);\n    return isFinite(raw) && raw >= 0 ? raw : 0;\n  }\n  function setClicks(value) {\n    try {\n      storage.setItem('gtm_session_click_count', String(Math.max(0, value)));\n    } catch (e) {}\n  }\n  var eventIdBase = uuid4();\n  function dispatchStage(stageKey) {\n    var payload = {\n      event_id: eventIdBase + '-' + stageKey,\n      aida_stage: stageKey,\n      session_clicks: getClicks(),\n      dwell_seconds: secondsSince(sessionStart)\n    };\n    safePush({\n      event: stageEvents[stageKey],\n      event_id: payload.event_id,\n      aida_stage: payload.aida_stage,\n      session_clicks: payload.session_clicks,\n      dwell_seconds: payload.dwell_seconds\n    });\n  }\n  function maybeFire(stageKey) {\n    if (!stageEvents[stageKey]) {\n      return;\n    }\n    var currentStage = getStage();\n    if (stageOrder[currentStage] >= stageOrder[stageKey]) {\n      return;\n    }\n    setStage(stageKey);\n    dispatchStage(stageKey);\n  }\n  function checkDesire() {\n    if (stageOrder[getStage()] < stageOrder['Int']) {\n      return;\n    }\n    if (secondsSince(sessionStart) < desireSeconds) {\n      return;\n    }\n    if (getClicks() < desireClicks) {\n      return;\n    }\n    maybeFire('De');\n  }\n  document.addEventListener('click', function() {\n    var total = getClicks() + 1;\n    setClicks(total);\n    safePush({ event: 'aida_click_increment', session_clicks: total });\n    checkDesire();\n  }, true);\n  document.addEventListener('visibilitychange', function() {\n    if (!document.hidden) {\n      checkDesire();\n    }\n  });\n  setTimeout(function() {\n    maybeFire('Att');\n  }, attentionSeconds * 1000);\n  setTimeout(function() {\n    maybeFire('Int');\n    checkDesire();\n  }, intentionSeconds * 1000);\n  setTimeout(function() {\n    checkDesire();\n  }, desireSeconds * 1000);\n  safePush({\n    event: 'aida_bootstrap',\n    aida_stage: getStage(),\n    session_clicks: getClicks(),\n    dwell_seconds: secondsSince(sessionStart),\n    aida_attention_delay_s: attentionSeconds,\n    aida_intention_delay_s: intentionSeconds,\n    aida_desire_delay_s: desireSeconds,\n    aida_desire_click_threshold: desireClicks\n  });\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -279,11 +284,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var ga4Id = '{{GA4 Measurement ID}}';\n  var adsId = '{{Google Ads Conversion ID}}';\n  var hasGa4 = ga4Id && ga4Id !== 'G-000000000';\n  var hasAds = adsId && adsId !== 'AW-000000000';\n  if (!hasGa4 && !hasAds) {\n    return;\n  }\n  var scriptId = hasGa4 ? ga4Id : adsId;\n  if (!window.gtag) {\n    window.dataLayer = window.dataLayer || [];\n    window.gtag = function(){ window.dataLayer.push(arguments); };\n  }\n  if (!window.__AIDA_GTAG_SCRIPT__ && scriptId) {\n    window.__AIDA_GTAG_SCRIPT__ = true;\n    var gtagScript = document.createElement('script');\n    gtagScript.async = true;\n    gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(scriptId);\n    var firstScript = document.getElementsByTagName('script')[0];\n    (firstScript && firstScript.parentNode ? firstScript.parentNode : document.head || document.documentElement).insertBefore(gtagScript, firstScript || null);\n  }\n  window.gtag('js', new Date());\n  if (hasGa4) {\n    window.gtag('config', ga4Id, { 'send_page_view': false });\n  }\n  if (hasAds) {\n    window.gtag('config', adsId);\n  }\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var ga4Id = '{{GA4 Measurement ID}}';\n  var adsId = '{{Google Ads Conversion ID}}';\n  var hasGa4 = ga4Id && ga4Id !== 'G-000000000';\n  var hasAds = adsId && adsId !== 'AW-000000000';\n  if (!hasGa4 && !hasAds) {\n    return;\n  }\n  var scriptId = hasGa4 ? ga4Id : adsId;\n  if (!window.gtag) {\n    window.dataLayer = window.dataLayer || [];\n    window.gtag = function(){ window.dataLayer.push(arguments); };\n  }\n  if (!window.__AIDA_GTAG_SCRIPT__ && scriptId) {\n    window.__AIDA_GTAG_SCRIPT__ = true;\n    var gtagScript = document.createElement('script');\n    gtagScript.async = true;\n    gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(scriptId);\n    var firstScript = document.getElementsByTagName('script')[0];\n    (firstScript && firstScript.parentNode ? firstScript.parentNode : document.head || document.documentElement).insertBefore(gtagScript, firstScript || null);\n  }\n  window.gtag('js', new Date());\n  if (hasGa4) {\n    window.gtag('config', ga4Id, { 'send_page_view': false });\n  }\n  if (hasAds) {\n    window.gtag('config', adsId);\n  }\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -299,11 +309,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'aida_attention', payload);\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'aida_attention', payload);\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -319,11 +334,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'aida_intention', payload);\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'aida_intention', payload);\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -339,11 +359,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'aida_desire', payload);\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'aida_desire', payload);\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -359,11 +384,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var adsId = '{{Google Ads Conversion ID}}';\n  var label = '{{Ads Label - ATT}}';\n  if (!adsId || adsId === 'AW-000000000' || !label || label === 'ATT000' || label === 'INT000' || label === 'DES000') {\n    return;\n  }\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    send_to: adsId + '/' + label,\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'conversion', payload);\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var adsId = '{{Google Ads Conversion ID}}';\n  var label = '{{Ads Label - ATT}}';\n  if (!adsId || adsId === 'AW-000000000' || !label || label === 'ATT000' || label === 'INT000' || label === 'DES000') {\n    return;\n  }\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    send_to: adsId + '/' + label,\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'conversion', payload);\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -379,11 +409,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var adsId = '{{Google Ads Conversion ID}}';\n  var label = '{{Ads Label - INT}}';\n  if (!adsId || adsId === 'AW-000000000' || !label || label === 'ATT000' || label === 'INT000' || label === 'DES000') {\n    return;\n  }\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    send_to: adsId + '/' + label,\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'conversion', payload);\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var adsId = '{{Google Ads Conversion ID}}';\n  var label = '{{Ads Label - INT}}';\n  if (!adsId || adsId === 'AW-000000000' || !label || label === 'ATT000' || label === 'INT000' || label === 'DES000') {\n    return;\n  }\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    send_to: adsId + '/' + label,\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'conversion', payload);\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -399,11 +434,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var adsId = '{{Google Ads Conversion ID}}';\n  var label = '{{Ads Label - DES}}';\n  if (!adsId || adsId === 'AW-000000000' || !label || label === 'ATT000' || label === 'INT000' || label === 'DES000') {\n    return;\n  }\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    send_to: adsId + '/' + label,\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'conversion', payload);\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var adsId = '{{Google Ads Conversion ID}}';\n  var label = '{{Ads Label - DES}}';\n  if (!adsId || adsId === 'AW-000000000' || !label || label === 'ATT000' || label === 'INT000' || label === 'DES000') {\n    return;\n  }\n  if (typeof window.gtag !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    send_to: adsId + '/' + label,\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  window.gtag('event', 'conversion', payload);\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -419,11 +459,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (window.fbq) {\n    return;\n  }\n  window.fbq = function(){\n    window.fbq.callMethod ? window.fbq.callMethod.apply(window.fbq, arguments) : window.fbq.queue.push(arguments);\n  };\n  if (!window._fbq) {\n    window._fbq = window.fbq;\n  }\n  window.fbq.push = window.fbq;\n  window.fbq.loaded = true;\n  window.fbq.version = '2.0';\n  window.fbq.queue = [];\n  var script = document.createElement('script');\n  script.async = true;\n  script.src = 'https://connect.facebook.net/en_US/fbevents.js';\n  var firstScript = document.getElementsByTagName('script')[0];\n  (firstScript && firstScript.parentNode ? firstScript.parentNode : document.head || document.documentElement).insertBefore(script, firstScript || null);\n  window.fbq('init', pixelId);\n  window.fbq('track', 'PageView');\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (window.fbq) {\n    return;\n  }\n  window.fbq = function(){\n    window.fbq.callMethod ? window.fbq.callMethod.apply(window.fbq, arguments) : window.fbq.queue.push(arguments);\n  };\n  if (!window._fbq) {\n    window._fbq = window.fbq;\n  }\n  window.fbq.push = window.fbq;\n  window.fbq.loaded = true;\n  window.fbq.version = '2.0';\n  window.fbq.queue = [];\n  var script = document.createElement('script');\n  script.async = true;\n  script.src = 'https://connect.facebook.net/en_US/fbevents.js';\n  var firstScript = document.getElementsByTagName('script')[0];\n  (firstScript && firstScript.parentNode ? firstScript.parentNode : document.head || document.documentElement).insertBefore(script, firstScript || null);\n  window.fbq('init', pixelId);\n  window.fbq('track', 'PageView');\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -439,11 +484,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (typeof window.fbq !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  var options = eventId ? { eventID: eventId } : undefined;\n  if (options) {\n    window.fbq('trackCustom', 'AIDA_Attention', payload, options);\n  } else {\n    window.fbq('trackCustom', 'AIDA_Attention', payload);\n  }\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (typeof window.fbq !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  var options = eventId ? { eventID: eventId } : undefined;\n  if (options) {\n    window.fbq('trackCustom', 'AIDA_Attention', payload, options);\n  } else {\n    window.fbq('trackCustom', 'AIDA_Attention', payload);\n  }\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -459,11 +509,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (typeof window.fbq !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  var options = eventId ? { eventID: eventId } : undefined;\n  if (options) {\n    window.fbq('trackCustom', 'AIDA_Intention', payload, options);\n  } else {\n    window.fbq('trackCustom', 'AIDA_Intention', payload);\n  }\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (typeof window.fbq !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  var options = eventId ? { eventID: eventId } : undefined;\n  if (options) {\n    window.fbq('trackCustom', 'AIDA_Intention', payload, options);\n  } else {\n    window.fbq('trackCustom', 'AIDA_Intention', payload);\n  }\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
@@ -479,11 +534,16 @@
           {
             "type": "TEMPLATE",
             "key": "html",
-            "value": "<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (typeof window.fbq !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  var options = eventId ? { eventID: eventId } : undefined;\n  if (options) {\n    window.fbq('trackCustom', 'AIDA_Desire', payload, options);\n  } else {\n    window.fbq('trackCustom', 'AIDA_Desire', payload);\n  }\n})();\n</script>\n"
+            "value": "\n<script>\n(function() {\n  var pixelId = '{{Meta Pixel ID}}';\n  if (!pixelId || /^0+$/.test(pixelId)) {\n    return;\n  }\n  if (typeof window.fbq !== 'function') {\n    return;\n  }\n  var eventId = '{{DLV - event_id}}';\n  if (!eventId) {\n    return;\n  }\n  var stage = '{{DLV - aida_stage}}';\n  var clicks = parseInt('{{DLV - session_clicks}}', 10);\n  var dwell = parseFloat('{{DLV - dwell_seconds}}');\n  var payload = {\n    event_id: eventId,\n    aida_stage: stage\n  };\n  if (!isNaN(clicks)) {\n    payload.session_clicks = clicks;\n  }\n  if (!isNaN(dwell)) {\n    payload.dwell_seconds = dwell;\n  }\n  var options = eventId ? { eventID: eventId } : undefined;\n  if (options) {\n    window.fbq('trackCustom', 'AIDA_Desire', payload, options);\n  } else {\n    window.fbq('trackCustom', 'AIDA_Desire', payload);\n  }\n})();\n</script>\n"
           },
           {
             "type": "BOOLEAN",
             "key": "supportDocumentWrite",
+            "value": false
+          },
+          {
+            "type": "BOOLEAN",
+            "key": "useIframe",
             "value": false
           }
         ],
